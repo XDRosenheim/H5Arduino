@@ -1,4 +1,17 @@
+// Licensed under 
+//   __________________.____            ________  
+//  /  _____/\______   \    |     ___  _\_____  \ 
+// /   \  ___ |     ___/    |     \  \/ / _(__  < 
+// \    \_\  \|    |   |    |___   \   / /       \
+//  \______  /|____|   |_______ \   \_/ /______  /
+//         \/                  \/              \/ 
+// More info: http://www.gnu.org/licenses/gpl-3.0.en.html
+
 #include <FreeRTOS_AVR.h>
+#include <SPI.h>
+#include <Ethernet.h>
+#include <utility/w5100.h>
+
 // First set
 const uint8_t RED_PIN = 9;
 const uint8_t YEL_PIN = 8;
@@ -12,7 +25,6 @@ const uint32_t orangeWait = 500;
 const uint32_t greenWait = 2000;
 const uint32_t yellowWait = 1000;
 
-long time = 0;
 bool is1going = false;
 bool is2going = false;
 int redToOrange = 3000;
@@ -26,20 +38,16 @@ int maxWaitTime =
     greenToYellow +
     yellowToRed;
 
+byte mac[] = { 0x90, 0xA2, 0xda, 0x00, 0x68, 0xA3 };
+IPAddress ip(192, 168, 1, 2);
+EthernetServer server(80);
+
 SemaphoreHandle_t sem;
 
 static void Thread1(void* arg) {
   while (1) {
     // Wait for signal from 2.
     xSemaphoreTake(sem, portMAX_DELAY);
-    // If 2 is still running, wait.
-    while ( is2going ) {
-      Serial.println("1: Waiting for 2.");
-    }
-
-    is1going = true;
-  	//Serial.println("1: Start");
-    // Turn LED off.
   	red(1);
   	vTaskDelay(redToOrange);
   	orange(1);
@@ -50,27 +58,15 @@ static void Thread1(void* arg) {
     vTaskDelay(yellowToRed);
     red(1);
     vTaskDelay(20);
-    is1going = false;
-    //Serial.println("1: End");
-  	if ( ! is1going ) {
-      // Send signal.
-      //Serial.println("1: Ping.");
-      xSemaphoreGive(sem);
-    }
-    // Wait for signal from 2.
+    // Send signal.
+    xSemaphoreGive(sem);
+    // Wait for signal.
     xSemaphoreTake(sem, maxWaitTime);
   }
 }
+
 static void Thread2(void* arg) {
   while (1) {
-    // If 2 is still running, wait.
-    while ( is1going ) {
-      Serial.println("2: Waiting for 1.");
-    }
-
-    is2going = true;
-    Serial.println("2: Start");
-    // Turn LED off.
     red(2);
     vTaskDelay(redToOrange);
     orange(2);
@@ -81,20 +77,66 @@ static void Thread2(void* arg) {
     vTaskDelay(yellowToRed);
     red(2);
     vTaskDelay(20);
-    is2going = false;
-    Serial.println("2: End");
-    if ( ! is2going ) {
-      // Send signal.
-      // Serial.println("2: Ping.");
-      xSemaphoreGive(sem);
-    }
-    // Wait for signal from 2.
+    xSemaphoreGive(sem);
     xSemaphoreTake(sem, maxWaitTime);
   }
 }
 
+static void Thread3(void* arg) {
+  while (1) {
+    // listen for incoming clients
+    EthernetClient client = server.available();
+    if (client) {
+      Serial.println("new client");
+      // an http request ends with a blank line
+      boolean currentLineIsBlank = true;
+      while (client.connected()) {
+        if (client.available()) {
+          char c = client.read();
+          Serial.write(c);
+          // if you've gotten to the end of the line (received a newline
+          // character) and the line is blank, the http request has ended,
+          // so you can send a reply
+          if (c == '\n' && currentLineIsBlank) {
+            // send a standard http response header
+            client.println("HTTP/1.1 200 OK");
+            client.println("Content-Type: text/html");
+            client.println("Connection: close");  // the connection will be closed after completion of the response
+            client.println("Refresh: 5");  // refresh the page automatically every 5 sec
+            client.println();
+            client.println("<!DOCTYPE HTML>");
+            client.println("<html>");
+            // output the value of each analog input pin
+            for (int analogChannel = 0; analogChannel < 6; analogChannel++) {
+              int sensorReading = analogRead(analogChannel);
+              client.print("analog input ");
+              client.print(analogChannel);
+              client.print(" is ");
+              client.print(sensorReading);
+              client.println("<br />");
+            }
+            client.println("</html>");
+            break;
+          }
+          if (c == '\n') {
+            // you're starting a new line
+            currentLineIsBlank = true;
+          } else if (c != '\r') {
+            // you've gotten a character on the current line
+            currentLineIsBlank = false;
+          }
+        }
+      }
+      // give the web browser time to receive the data
+      delay(1);
+      // close the connection:
+      client.stop();
+      Serial.println("client disconnected");
+    }
+  }
+}
+
 void setup() {
-  time = millis();
   Serial.begin(9600);
   pinMode(RED_PIN, OUTPUT);
   pinMode(YEL_PIN, OUTPUT);
@@ -102,17 +144,22 @@ void setup() {
   pinMode(RED2_PIN, OUTPUT);
   pinMode(YEL2_PIN, OUTPUT);
   pinMode(GRN2_PIN, OUTPUT);
+  Ethernet.begin(mac, ip);
+  W5100.setRetransmissionTime(0x07D0);
+  W5100.setRetransmissionCount(1);
+  Serial.print("server is at ");
+  Serial.println(Ethernet.localIP());
   red(1);
   red(2);
-  portBASE_TYPE s1, s2;
+  portBASE_TYPE s1, s2, s3;
   // initialize semaphore
   sem = xSemaphoreCreateCounting(1, 0);
-  // create task at priority two
   s1 = xTaskCreate(Thread1, NULL, configMINIMAL_STACK_SIZE, NULL, 2, NULL);
-  // create task at priority one
   s2 = xTaskCreate(Thread2, NULL, configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+  s3 = xTaskCreate(Thread3, NULL, configMINIMAL_STACK_SIZE, NULL, 0, NULL);
+
   // check for creation errors
-  if (sem== NULL || s1 != pdPASS || s2 != pdPASS ) {
+  if (sem== NULL || s1 != pdPASS || s2 != pdPASS || s3 != pdPASS) {
     Serial.println(F("Creation problem"));
     while(1);
   }
@@ -123,10 +170,6 @@ void setup() {
 }
 
 void loop() {
-  // time = millis();
-  // if ( time % 1000 == 0 && time > 0) {
-  //   Serial.println(millis());
-  // }
 }
 
 void red(int i) {
