@@ -1,3 +1,18 @@
+#include <Arduino_FreeRTOS.h>
+#include <croutine.h>
+#include <event_groups.h>
+#include <FreeRTOSConfig.h>
+#include <FreeRTOSVariant.h>
+#include <list.h>
+#include <mpu_wrappers.h>
+#include <portable.h>
+#include <portmacro.h>
+#include <projdefs.h>
+#include <queue.h>
+#include <semphr.h>
+#include <StackMacros.h>
+#include <task.h>
+#include <timers.h>
 // Licensed under 
 //   __________________.____            ________  
 //  /  _____/\______   \    |     ___  _\_____  \ 
@@ -7,10 +22,10 @@
 //         \/                  \/              \/ 
 // More info: http://www.gnu.org/licenses/gpl-3.0.en.html
 
-#include <FreeRTOS_AVR.h>
-#include <SPI.h>
-#include <Ethernet.h>
-#include <utility/w5100.h>
+// #include <FreeRTOS_AVR.h>
+
+
+int runMe = 0;
 
 // First set
 const uint8_t RED_PIN = 9;
@@ -20,6 +35,8 @@ const uint8_t GRN_PIN = 7;
 const uint8_t RED2_PIN = 5;
 const uint8_t YEL2_PIN = 3;
 const uint8_t GRN2_PIN = 6;
+
+const uint8_t READ_PIN = 2;
 // delays
 const uint32_t orangeWait = 500;
 const uint32_t greenWait = 2000;
@@ -27,10 +44,12 @@ const uint32_t yellowWait = 1000;
 
 bool is1going = false;
 bool is2going = false;
-int redToOrange = 3000;
-int orangeToGreen = 1000;
-int greenToYellow = 3000;
-int yellowToRed = 500;
+int redToOrange = 460 / portTICK_PERIOD_MS;
+int orangeToGreen = 960 / portTICK_PERIOD_MS;
+int greenToYellow = 2960 / portTICK_PERIOD_MS;
+int yellowToRed = 960 / portTICK_PERIOD_MS;
+
+int i = 0;
 
 int maxWaitTime = 
     redToOrange +
@@ -38,128 +57,78 @@ int maxWaitTime =
     greenToYellow +
     yellowToRed;
 
-byte mac[] = { 0x90, 0xA2, 0xda, 0x00, 0x68, 0xA3 };
-IPAddress ip(192, 168, 1, 2);
-EthernetServer server(80);
-
 SemaphoreHandle_t sem;
 
 static void Thread1(void* arg) {
   while (1) {
-    // Wait for signal from 2.
-    xSemaphoreTake(sem, portMAX_DELAY);
-  	red(1);
-  	vTaskDelay(redToOrange);
-  	orange(1);
-    vTaskDelay(orangeToGreen);
-    green(1);
-    vTaskDelay(greenToYellow);
-    yellow(1);
-    vTaskDelay(yellowToRed);
-    red(1);
-    vTaskDelay(20);
-    // Send signal.
-    xSemaphoreGive(sem);
-    // Wait for signal.
-    xSemaphoreTake(sem, maxWaitTime);
+    i = digitalRead(READ_PIN);
+    Serial.print("1: ");
+    Serial.println(i);
+    if (i == LOW) {
+      Serial.println("1. LOW.");
+      red(1);
+      vTaskDelay(redToOrange);
+      orange(1);
+      vTaskDelay(orangeToGreen);
+      green(1);
+      vTaskDelay(greenToYellow);
+      yellow(1);
+      vTaskDelay(yellowToRed);
+      red(1);
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+      Serial.println("1. End.");
+      // Send signal.
+      xSemaphoreGive(sem);
+      // Wait for signal.
+      xSemaphoreTake(sem, maxWaitTime);
+    }
   }
 }
 
 static void Thread2(void* arg) {
   while (1) {
-    red(2);
-    vTaskDelay(redToOrange);
-    orange(2);
-    vTaskDelay(orangeToGreen);
-    green(2);
-    vTaskDelay(greenToYellow);
-    yellow(2);
-    vTaskDelay(yellowToRed);
-    red(2);
-    vTaskDelay(20);
-    xSemaphoreGive(sem);
-    xSemaphoreTake(sem, maxWaitTime);
-  }
-}
-
-static void Thread3(void* arg) {
-  while (1) {
-    // listen for incoming clients
-    EthernetClient client = server.available();
-    if (client) {
-      Serial.println("new client");
-      // an http request ends with a blank line
-      boolean currentLineIsBlank = true;
-      while (client.connected()) {
-        if (client.available()) {
-          char c = client.read();
-          Serial.write(c);
-          // if you've gotten to the end of the line (received a newline
-          // character) and the line is blank, the http request has ended,
-          // so you can send a reply
-          if (c == '\n' && currentLineIsBlank) {
-            // send a standard http response header
-            client.println("HTTP/1.1 200 OK");
-            client.println("Content-Type: text/html");
-            client.println("Connection: close");  // the connection will be closed after completion of the response
-            client.println("Refresh: 5");  // refresh the page automatically every 5 sec
-            client.println();
-            client.println("<!DOCTYPE HTML>");
-            client.println("<html>");
-            // output the value of each analog input pin
-            for (int analogChannel = 0; analogChannel < 6; analogChannel++) {
-              int sensorReading = analogRead(analogChannel);
-              client.print("analog input ");
-              client.print(analogChannel);
-              client.print(" is ");
-              client.print(sensorReading);
-              client.println("<br />");
-            }
-            client.println("</html>");
-            break;
-          }
-          if (c == '\n') {
-            // you're starting a new line
-            currentLineIsBlank = true;
-          } else if (c != '\r') {
-            // you've gotten a character on the current line
-            currentLineIsBlank = false;
-          }
-        }
-      }
-      // give the web browser time to receive the data
-      delay(1);
-      // close the connection:
-      client.stop();
-      Serial.println("client disconnected");
+    i = digitalRead(READ_PIN);
+    Serial.print("2: ");
+    Serial.println(i);
+    if (i == HIGH) {
+      Serial.println("2. HIGH.");
+      red(2);
+      vTaskDelay(redToOrange);
+      orange(2);
+      vTaskDelay(orangeToGreen);
+      green(2);
+      vTaskDelay(greenToYellow);
+      yellow(2);
+      vTaskDelay(yellowToRed);
+      red(2);
+      vTaskDelay(2000 / portTICK_PERIOD_MS);
+      Serial.println("2. End.");
+      xSemaphoreGive(sem);
+      xSemaphoreTake(sem, maxWaitTime);
     }
   }
 }
 
 void setup() {
   Serial.begin(9600);
+  pinMode(READ_PIN, INPUT);
+  pinMode(A0, INPUT);
   pinMode(RED_PIN, OUTPUT);
   pinMode(YEL_PIN, OUTPUT);
   pinMode(GRN_PIN, OUTPUT);
   pinMode(RED2_PIN, OUTPUT);
   pinMode(YEL2_PIN, OUTPUT);
   pinMode(GRN2_PIN, OUTPUT);
-  Ethernet.begin(mac, ip);
-  W5100.setRetransmissionTime(0x07D0);
-  W5100.setRetransmissionCount(1);
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
   red(1);
   red(2);
-  portBASE_TYPE s1, s2, s3;
+  portBASE_TYPE s1, s2;
   // initialize semaphore
   sem = xSemaphoreCreateCounting(1, 0);
   s1 = xTaskCreate(Thread1, NULL, configMINIMAL_STACK_SIZE, NULL, 2, NULL);
   s2 = xTaskCreate(Thread2, NULL, configMINIMAL_STACK_SIZE, NULL, 1, NULL);
-  s3 = xTaskCreate(Thread3, NULL, configMINIMAL_STACK_SIZE, NULL, 0, NULL);
 
   // check for creation errors
-  if (sem== NULL || s1 != pdPASS || s2 != pdPASS || s3 != pdPASS) {
+  if (sem== NULL || s1 != pdPASS || s2 != pdPASS) {
     Serial.println(F("Creation problem"));
     while(1);
   }
