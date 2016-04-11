@@ -36,7 +36,7 @@ const uint8_t RED2_PIN = 5;
 const uint8_t YEL2_PIN = 3;
 const uint8_t GRN2_PIN = 6;
 
-const uint8_t READ_PIN = 2;
+const uint8_t TOR_PIN = 2;
 // delays
 const uint32_t orangeWait = 500;
 const uint32_t greenWait = 2000;
@@ -61,11 +61,8 @@ SemaphoreHandle_t sem;
 
 static void Thread1(void* arg) {
   while (1) {
-    i = digitalRead(READ_PIN);
-    Serial.print("1: ");
-    Serial.println(i);
+    i = digitalRead(TOR_PIN);
     if (i == LOW) {
-      Serial.println("1. LOW.");
       red(1);
       vTaskDelay(redToOrange);
       orange(1);
@@ -76,7 +73,6 @@ static void Thread1(void* arg) {
       vTaskDelay(yellowToRed);
       red(1);
       vTaskDelay(2000 / portTICK_PERIOD_MS);
-      Serial.println("1. End.");
       // Send signal.
       xSemaphoreGive(sem);
       // Wait for signal.
@@ -87,11 +83,8 @@ static void Thread1(void* arg) {
 
 static void Thread2(void* arg) {
   while (1) {
-    i = digitalRead(READ_PIN);
-    Serial.print("2: ");
-    Serial.println(i);
+    i = digitalRead(TOR_PIN);
     if (i == HIGH) {
-      Serial.println("2. HIGH.");
       red(2);
       vTaskDelay(redToOrange);
       orange(2);
@@ -102,7 +95,6 @@ static void Thread2(void* arg) {
       vTaskDelay(yellowToRed);
       red(2);
       vTaskDelay(2000 / portTICK_PERIOD_MS);
-      Serial.println("2. End.");
       xSemaphoreGive(sem);
       xSemaphoreTake(sem, maxWaitTime);
     }
@@ -111,8 +103,7 @@ static void Thread2(void* arg) {
 
 void setup() {
   Serial.begin(9600);
-  pinMode(READ_PIN, INPUT);
-  pinMode(A0, INPUT);
+  pinMode(TOR_PIN, INPUT);
   pinMode(RED_PIN, OUTPUT);
   pinMode(YEL_PIN, OUTPUT);
   pinMode(GRN_PIN, OUTPUT);
