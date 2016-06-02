@@ -103,6 +103,7 @@ static void Thread2(void* arg) {
 
 void setup() {
   Serial.begin(9600);
+  // Setting up pins.
   pinMode(TOR_PIN, INPUT);
   pinMode(RED_PIN, OUTPUT);
   pinMode(YEL_PIN, OUTPUT);
@@ -113,12 +114,13 @@ void setup() {
   red(1);
   red(2);
   portBASE_TYPE s1, s2;
-  // initialize semaphore
+  // initialize semaphore.
   sem = xSemaphoreCreateCounting(1, 0);
+  // Create tasks.
   s1 = xTaskCreate(Thread1, NULL, configMINIMAL_STACK_SIZE, NULL, 2, NULL);
   s2 = xTaskCreate(Thread2, NULL, configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
-  // check for creation errors
+  // check for creation errors.
   if (sem== NULL || s1 != pdPASS || s2 != pdPASS) {
     Serial.println(F("Creation problem"));
     while(1);
@@ -132,6 +134,7 @@ void setup() {
 void loop() {
 }
 
+// Tænd for rød og sluk for atl andet.
 void red(int i) {
   if ( i == 1 ) {
     digitalWrite(RED_PIN, HIGH);
@@ -144,6 +147,7 @@ void red(int i) {
   }
 }
 
+// Tænd for gul og sluk for atl andet.
 void yellow(int i) {
   if ( i == 1 ) {
     digitalWrite(RED_PIN, LOW);
@@ -156,6 +160,7 @@ void yellow(int i) {
   }
 }
 
+// Tænd for grøn og sluk for atl andet.
 void green(int i) {
   if ( i == 1 ) {
     digitalWrite(RED_PIN, LOW);
@@ -168,6 +173,7 @@ void green(int i) {
   }
 }
 
+// Tænd for rød og gul og sluk for grøn.
 void orange(int i) {
   if ( i == 1 ) {
     digitalWrite(RED_PIN, HIGH);
